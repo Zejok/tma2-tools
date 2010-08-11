@@ -27,8 +27,51 @@ Func _stringHasLower($sString)
 	Return 0
 EndFunc
 
-Func _stringConvertUUID($UUID)
-	Return StringRegExpReplace($UUID, "([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})-([A-F0-9]{2})([A-F0-9]{2})-([A-F0-9]{2})([A-F0-9]{2})", "$4$3$2$1-$6$5-$8$7")
+Func _stringConvertUUID($UUID, $type=1)
+	; UUID   = 53529DAD-F7C9-476E-87CC-1547C4E3E821
+	; type 1 = AD9D5253-C9F7-6E47-87CC-1547C4E3E821
+	;          e.g. the stored computer UUID to the displayed Intel AMT GUID
+	; type 2 = DAD92535-9C7F-E674-78CC-51744C3E8E12
+	;          e.g. an application GUID as it's stored in HKLM\Software\Classes\Installer\Products
+	$UUID = StringUpper($UUID)
+	$hasBrackets = StringLeft($UUID, 1) = "{" OR StringRight($UUID, 1) = "}"
+
+	Switch $type
+		Case 1
+			$UUID = StringRegExpReplace($UUID, "^\{?([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})-?([A-F0-9]{2})([A-F0-9]{2})-?([A-F0-9]{2})([A-F0-9]{2})", "$4$3$2$1-$6$5-$8$7")
+			if $hasBrackets Then $UUID = "{" & $UUID
+
+			Return $UUID
+		Case 2
+			$hasHyphens = (StringInStr($UUID, "-") AND StringLen($UUID) >= 36)
+			$UUID = StringRegExpReplace($UUID, "[-\}\{]", "")
+			Local $sOut = ""
+
+			$afirstSection = StringRegExp($UUID, "^([A-F0-9]{8})-?([A-F0-9]{4})-?([A-F0-9]{4})", 3)
+			For $i=0 To UBound($afirstSection)-1
+				$sOut &= _StringReverse($afirstSection[$i])
+			Next
+			$asecondSection = StringRegExp($UUID, "([A-F0-9]{2})([A-F0-9]{2})-?([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})([A-F0-9]{2})$", 3)
+			For $i=0 To UBound($asecondSection)-1
+				$sOut &= _StringReverse($asecondSection[$i])
+			Next
+
+			#cs
+			if $hasHyphens Then
+				$sOut = _StringInsert($sOut, "-", 8)
+				$sOut = _StringInsert($sOut, "-", 13)
+				$sOut = _StringInsert($sOut, "-", 18)
+				$sOut = _StringInsert($sOut, "-", 23)
+			EndIf
+			if $hasBrackets Then $sOut = "{" & $sOut & "}"
+			#ce
+
+			Return $sOut
+	EndSwitch
+EndFunc
+
+Func _stringIsGUID($UUID)
+	Return StringRegExp($UUID, "^\{?[A-Z0-9]{8}-?([A-Z0-9]{4}-?){3}[A-Z0-9]{12}\}?$")
 EndFunc
 
 Func _progressAscii($iPercent, $bText = False, $iLength = 20, $cOn = "|", $cOff = "-")

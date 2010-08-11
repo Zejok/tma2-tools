@@ -118,11 +118,14 @@ Func __WbemSink_OnObjectReady($oObject, $oAsyncContext)
 EndFunc
 #ce
 
-Func _regReadWMI($sKey, $sComp)
-	$oRegProv = ObjGet("winmgmts:\\" & $sComp & "\root\Default:StdRegProv")
+Func _regEnumKeys($sKey, $sComp = ".")
+	const $HKEY_LOCAL_MACHINE = 0x80000002
+	Local $arrSubKeys
+	Local $objReg=ObjGet("winmgmts:{impersonationLevel=impersonate}!\\"& $sComp & "\root\default:StdRegProv")
 	if @error Then Return SetError(1)
 
-;~ 	if $oRegProv.ReadBinary()
+	$objReg.EnumKey($HKEY_LOCAL_MACHINE, $sKey, $arrSubKeys)
+	Return $arrSubKeys
 EndFunc
 
 Func _checkCert($sComp = ".")
@@ -221,6 +224,20 @@ Func _AppvGetApps($sComp = ".") ; name, version, last launch, pkg GUID, source O
 	Next
 
 	Return $aReturn
+EndFunc
+
+Func _renameComp($SNEWNAME, $SCOMP = @ComputerName, $USERNAME = Default, $PASS = Default)
+	$OWMI = ObjGet("winmgmts:{impersonationLevel=impersonate,authenticationLevel=pktPrivacy}!\\" & $SCOMP & "\root\cimv2")
+	$COLCS = $OWMI.ExecQuery("Select * from Win32_ComputerSystem")
+	For $OBJCS In $COLCS
+		$IRETURN = $OBJCS.Rename($SNEWNAME, $PASS, $USERNAME)
+	Next
+	$OWMI = 0
+	If $IRETURN Then
+		Return SetError($IRETURN)
+	Else
+		Return 1
+	EndIf
 EndFunc
 
 Func _serviceControl($sServiceName, $sAction, $sArg = "", $sComp= ".")
