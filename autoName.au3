@@ -1,4 +1,5 @@
-#autoit3wrapper_icon=Icons\Gnome\Gnome-Tools-Check-Spelling.ico
+#autoit3wrapper_icon=..\Icons\Gnome\Gnome-Tools-Check-Spelling.ico
+#AutoIt3Wrapper_usex64=N
 #AutoIt3Wrapper_Res_Fileversion=0.2.5.25
 #autoit3wrapper_res_fileversion_autoincrement=Y
 #autoit3wrapper_res_description=Auto Rename Utility
@@ -14,8 +15,9 @@
 #include <guiedit.au3>
 #include <string.au3>
 
-#include <userinfo.au3>
-#include <tma2.au3>
+#include "userinfo.au3"
+#include "tma2.au3"
+#include "_services.au3"
 
 #include <modernMenuRaw.au3>
 
@@ -27,10 +29,10 @@ $frmMain = GUICreate("autoName", 233, 202, 358, 375);, -1, BitOR($WS_EX_WINDOWED
 
 $menu = GUICtrlCreateContextMenu()
 ;~ $menuCheck = GUICtrlCreateMenuItem("Re-check New Name", $menu)
-$menuCheck = _GUICtrlCreateODMenuItem("Re-check New Name", $menu, "Icons\Gnome\16\stock_spellcheck.ico")
-$menuReboot = _GUICtrlCreateODMenuItem("Re-start Computer", $menu, "Icons\Gnome\16\gnome-shutdown.ico")
+$menuCheck = _GUICtrlCreateODMenuItem("Re-check New Name", $menu, "..\Icons\Gnome\16\stock_spellcheck.ico")
+$menuReboot = _GUICtrlCreateODMenuItem("Re-start Computer", $menu, "..\Icons\fugue\Icons\control-power.png")
 _GUICtrlCreateODMenuItem("", $menu)
-$menuOptions = _GUICtrlCreateODMenuItem("&Options", $menu, "Icons\Gnome\16\Preferences-Desktop.ico")
+$menuOptions = _GUICtrlCreateODMenuItem("&Options", $menu, "..\Icons\Gnome\16\Preferences-Desktop.ico")
 
 GUICtrlCreateLabel("Computer:", 8, 10, 53, 20)
 GUICtrlCreateLabel("New Name:", 8, 34, 60, 20)
