@@ -38,6 +38,12 @@ Func _monitorInfoSemiSync($compName = ".")
 	Return $colMonitors
 EndFunc
 
+Func _monitorInfoFromEDID($EDID)
+	; PnP
+
+
+EndFunc
+
 
 Func _monitorInfo($compName = ".", $iStyle = 1)
 	; return colMonitors, with items (DeviceID) set to
