@@ -1,8 +1,8 @@
 ; TODO
 ; re-write function to grab icons for msi apps
 ; make remote uninstall possible
-#AutoIt3Wrapper_Icon=Icons\TMA2\autoUninstall.ico
-#AutoIt3Wrapper_Res_Fileversion=0.3.1.8
+#AutoIt3Wrapper_Icon=..\Icons\Jon\autoUninstall.ico
+#AutoIt3Wrapper_Res_Fileversion=0.3.5.9
 #AutoIt3Wrapper_Res_FileVersion_AutoIncrement=Y
 #AutoIt3Wrapper_Change2CUI=N
 
@@ -15,15 +15,16 @@
 #include <guilistview.au3>
 #include <guiimagelist.au3>
 #include <guimenu.au3>
-#include <tma2.au3>
+
+#include <includes\tma2.au3>
+#include <includes\_services.au3>
 
 Opt("TrayIconDebug", 1)
 
-Global Const $S_REGLOC64 = "HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-Global Const $S_REGLOC = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 Global $bStop = False
 Global $oArgs = ObjCreate("Scripting.Dictionary")
-
+; D11A42B3B10DA2B42BA956A2486831BB
+; 3B24A11DD01B4B2AB29A652A848613BB
 #region ### START Koda GUI section ### Form=
 $Form1 = GUICreate("autoUninstallIt", 339, 422, 566, 408, BitOR($WS_SIZEBOX, $WS_MAXIMIZEBOX, $WS_MINIMIZEBOX))
 WinMove($Form1, "", 100, 100, @DesktopWidth / 2, @DesktopHeight / 2)
@@ -74,6 +75,10 @@ For $i = 0 To $iCols - 1
 			Global $iColUninstall = $i
 		Case "Location"
 			Global $iColLocation = $i
+		Case "MSI GUID"
+			Global $iColGUID = $i
+		Case "Icon Path"
+			Global $iColIconPath = $i
 	EndSwitch
 
 	$hMenuItem[$i] = 1000 + $i
@@ -98,8 +103,7 @@ _GUIImageList_AddIcon($hImage, @SystemDir & "\shell32.dll", 2)
 GUISetState(@SW_SHOW)
 #endregion ### END Koda GUI section ###
 
-populateUninstalls($S_REGLOC)
-If StringInStr(@CPUArch, "64") Then populateUninstalls($S_REGLOC64)
+populateUninstalls()
 
 ;~ getSizes()
 
@@ -163,18 +167,32 @@ Func runUninstalls($sComp = ".")
 	GUICtrlSetData($lStatus, "Done after " & Round(TimerDiff($hTimer) / 1000) & " seconds.")
 EndFunc   ;==>runUninstalls
 
-Func populateUninstalls($sRegLoc)
-	; DisplayName, Company, DisplayVersion, Size, UninstallString, InstallLocation
-	Dim $i = 1, $iSizeTotal = 0
+Func populateUninstalls($sComp = @ComputerName)
+	Local $iSizeTotal = 0
+	Local $aSubkeys, $aSubkeys2
+	Local $totalNormalEntries, $totalExtEntries
+	Global Const $S_REGLOC64 = "SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+	Global Const $S_REGLOC = "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 
-	While 1
-		$sEnum = RegEnumKey($sRegLoc, $i)
-		$i += 1
-		$sKey = $sRegLoc & "\" & $sEnum
-		If @error Then
-			ConsoleWrite("Error on " & $i & " iteration" & @CRLF)
-			ExitLoop
+	$aSubkeys = _regEnumKeys($S_REGLOC, $sComp)
+	if @error Then Return
+
+	$totalNormalEntries = UBound($aSubkeys)
+	if StringInStr(@OSArch, "64") Then
+		$aSubkeys2 = _regEnumKeys($S_REGLOC64, $sComp)
+		$totalExtEntries = UBound($aSubkeys2)
+		_ArrayConcatenate($aSubkeys, $aSubkeys2)
+	EndIf
+
+	For $i=0 To UBound($aSubkeys)-1
+		$sEnum = $aSubkeys[$i]
+		if $i < $totalNormalEntries Then
+			$sRegLoc = $S_REGLOC
+		Else
+			$sRegLoc = $S_REGLOC64
 		EndIf
+
+		$sKey = "\\" & $sComp & "\HKLM\" & $sRegLoc & "\" & $sEnum
 
 		$sName = RegRead($sKey, "DisplayName")
 		If @error Then
@@ -203,11 +221,11 @@ Func populateUninstalls($sRegLoc)
 			$iSize = ""
 		EndIf
 
+		GUICtrlSetData($lStatus, $i+1 & " / " & UBound($aSubkeys) & ". " & Round((($i+1)/UBound($aSubkeys))*100) & "% done")
+		GUICtrlSetData($hProgress, Round((($i+1)/UBound($aSubkeys))*100))
+
 ;~ 		if @error Then ConsoleWrite("regread error: " & @error & @CRLF)
 		$hItem = GUICtrlCreateListViewItem($sName, $ListView1)
-;~ 		$hItem = _GUICtrlListView_AddItem($ListView1, $sName, 0, _GUICtrlListView_GetItemCount($ListView1)+9999)
-
-		GUICtrlSetBkColor($hItem, 0xF2F2F2)
 
 		$iCurrent = _GUICtrlListView_GetItemCount($ListView1) - 1
 		_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sPub, $iColPub)
@@ -224,18 +242,26 @@ Func populateUninstalls($sRegLoc)
 			Else
 				$hIcon = _GUIImageList_AddIcon($hImage, $aIcon[1], 0)
 			EndIf
+;~ 			_GUICtrlListView_SetItemText($ListView1, $iCurrent, $aIcon[1], $iColIconPath)
 			_GUICtrlListView_SetItemImage($ListView1, $iCurrent, $hIcon)
-		Else
+		ElseIf _stringIsGUID($sEnum) Then
+			$sNewKey = "HKLM\Software\Classes\Installer\Products\" & _stringConvertUUID($sEnum, 2)
 
-			_GUICtrlListView_SetItemImage($ListView1, $iCurrent, -1)
+;~ 			_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sNewKey, $iColGUID)
+			$sIcon = RegRead("\\" & $sComp & "\" & $sNewKey, "ProductIcon")
+			if NOT @error Then
+				$hIcon = _GUIImageList_AddIcon($hImage, $sIcon)
+				_GUICtrlListView_SetItemImage($ListView1, $iCurrent, $hIcon)
+;~ 				_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sIcon, $iColIconPath)
+			EndIf
 		EndIf
-	WEnd
+	Next
 
 	_GUICtrlListView_SetColumn($ListView1, $iColSize, "Size : " & Round($iSizeTotal), -1, 1)
 	_GUICtrlListView_SetColumnWidth($ListView1, $iColName, $LVSCW_AUTOSIZE)
 	_GUICtrlListView_SetColumnWidth($ListView1, $iColPub, $LVSCW_AUTOSIZE)
 	_GUICtrlListView_SetColumnWidth($ListView1, $iColVersion, $LVSCW_AUTOSIZE)
-EndFunc   ;==>populateUninstalls
+EndFunc   ;==>populateUninstalls{36A415C2-7181-421D-92C9-8255766E0FF3}
 
 Func getSizes()
 	For $i = 0 To _GUICtrlListView_GetItemCount($ListView1) - 1
@@ -260,38 +286,27 @@ Func WM_NOTIFY($hWnd, $iMsg, $iwParam, $ilParam)
 
 ;~ 	Switch $hWndFrom
 
-;### Tidy Error -> "endfunc" is closing previous "switch" on line 224
 EndFunc   ;==>WM_NOTIFY
 
-;### Tidy Error -> func Not closed before "Func" statement.
-;### Tidy Error -> "func" cannot be inside any IF/Do/While/For/Case/Func statement.
-#cs
-	Func WM_COMMAND($hWnd, $iMsg, $iwParam, $ilParam)
-		ConsoleWrite("hWnd:    " & $hWnd & @CRLF)
-		ConsoleWrite("iMsg:    " & $iMsg & @CRLF)
-		ConsoleWrite("iwParam: " & $iwParam & @CRLF)
-		ConsoleWrite("ilParam: " & $ilParam & @CRLF)
+Func WM_COMMAND($hWnd, $iMsg, $iwParam, $ilParam)
+	ConsoleWrite("hWnd:    " & $hWnd & @CRLF)
+	ConsoleWrite("iMsg:    " & $iMsg & @CRLF)
+	ConsoleWrite("iwParam: " & $iwParam & @CRLF)
+	ConsoleWrite("ilParam: " & $ilParam & @CRLF)
 
-		Return $GUI_RUNDEFMSG
-	EndFunc   ;==>WM_COMMAND
-#ce
-;### Tidy Error -> func Not closed before "Func" statement.
-;### Tidy Error -> "func" cannot be inside any IF/Do/While/For/Case/Func statement.
-#cs
-	Func WM_CONTEXTMENU($hWnd, $iMsg, $iwParam, $ilParam)
+	Return $GUI_RUNDEFMSG
+EndFunc   ;==>WM_COMMAND
 
-		Local $hMenu
+Func WM_CONTEXTMENU($hWnd, $iMsg, $iwParam, $ilParam)
+	Local $hMenu
 
-		$hMenu = _GUICtrlMenu_CreatePopup()
+	$hMenu = _GUICtrlMenu_CreatePopup()
 
-		For $i = 0 To _GUICtrlListView_GetColumnCount($ListView1) - 1
-			$aTemp = _GUICtrlListView_GetColumn($ListView1, $i)
-			_GUICtrlMenu_AddMenuItem($hMenu, $aTemp[5], $hMenuItem[$i])
-		Next
+	For $i = 0 To _GUICtrlListView_GetColumnCount($ListView1) - 1
+		$aTemp = _GUICtrlListView_GetColumn($ListView1, $i)
+		_GUICtrlMenu_AddMenuItem($hMenu, $aTemp[5], $hMenuItem[$i])
+	Next
 
-		_GUICtrlMenu_TrackPopupMenu($hMenu, $iwParam)
-		_GUICtrlMenu_DestroyMenu($hMenu)
-	EndFunc   ;==>WM_CONTEXTMENU
-#ce
-
-;### Tidy Error -> func is never closed in your script.
+	_GUICtrlMenu_TrackPopupMenu($hMenu, $iwParam)
+	_GUICtrlMenu_DestroyMenu($hMenu)
+EndFunc   ;==>WM_CONTEXTMENU
