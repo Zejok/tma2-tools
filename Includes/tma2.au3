@@ -1,9 +1,27 @@
 #include-once
 #include <string.au3>
 #include <ie.au3>
-#include <winapi.au3>
 
 if NOT IsDeclared("debug") Then Global $debug = 0
+
+Func _byteArray($binary)
+	; takes binary data and returns an array of bytes
+	if NOT IsBinary($binary) Then
+		if VarGetType($binary) = "String" Then
+			$binary = StringToBinary($binary) ; string var passed instead of binary, convert and continue
+		Else
+			Return SetError(1) ; other datatype, error out
+		EndIf
+	EndIf
+
+	Local $return[BinaryLen($binary)]
+
+	For $i = 0 to UBound($return)-1
+		$return[$i] = BinaryMid($binary, $i+1, 1)
+	Next
+
+	Return $return
+EndFunc
 
 Func _stringHasUpper($sString)
 	$aSplit = StringSplit($sString, "")
