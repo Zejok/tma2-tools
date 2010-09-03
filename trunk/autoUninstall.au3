@@ -1,8 +1,5 @@
-; TODO
-; re-write function to grab icons for msi apps
-; make remote uninstall possible
 #AutoIt3Wrapper_Icon=..\Icons\Jon\autoUninstall.ico
-#AutoIt3Wrapper_Res_Fileversion=0.3.5.9
+#AutoIt3Wrapper_Res_Fileversion=0.3.5.12
 #AutoIt3Wrapper_Res_FileVersion_AutoIncrement=Y
 #AutoIt3Wrapper_Change2CUI=N
 
@@ -21,10 +18,10 @@
 
 Opt("TrayIconDebug", 1)
 
+Global $debug = False
 Global $bStop = False
 Global $oArgs = ObjCreate("Scripting.Dictionary")
-; D11A42B3B10DA2B42BA956A2486831BB
-; 3B24A11DD01B4B2AB29A652A848613BB
+
 #region ### START Koda GUI section ### Form=
 $Form1 = GUICreate("autoUninstallIt", 339, 422, 566, 408, BitOR($WS_SIZEBOX, $WS_MAXIMIZEBOX, $WS_MINIMIZEBOX))
 WinMove($Form1, "", 100, 100, @DesktopWidth / 2, @DesktopHeight / 2)
@@ -43,16 +40,17 @@ if $cmdLine[0] > 0 Then
 	For $i = 1 To $cmdLine[0]
 		if StringRegExp($cmdLine[$i], "/\w*:") Then
 			$itemp = StringInStr($cmdLine[$i], ":")
-			$oArgs.Add(StringMid($cmdLine[$i], 2, $itemp), StringTrimLeft($cmdLine[$i], $itemp))
+			$oArgs.Add(StringLeft($cmdLine[$i], $itemp-1), StringTrimLeft($cmdLine[$i], $itemp))
 		EndIf
 	Next
 
-	$aitems = $oArgs.Items()
-	_ArrayDisplay($aitems)
-	$akeys = $oArgs.Keys()
-	_ArrayDisplay($akeys)
+	if $debug Then
+		$aitems = $oArgs.Items()
+		_ArrayDisplay($aitems)
+		$akeys = $oArgs.Keys()
+		_ArrayDisplay($akeys)
+	EndIf
 EndIf
-
 
 $iCols = _GUICtrlListView_GetColumnCount($ListView1)
 
@@ -88,8 +86,6 @@ GUICtrlSetResizing($ListView1, $GUI_DOCKBORDERS)
 _GUICtrlListView_JustifyColumn($ListView1, 3, 1)
 $lStatus = GUICtrlCreateLabel("Select programs to uninstall", 4, 376, 150, 25)
 $Button1 = GUICtrlCreateButton("Uninstall", 256, 368, 75, 25, 0)
-;~ _GUIImageList_Create
-
 
 $hProgress = GUICtrlCreateProgress(180, 370, 60, 20)
 GUICtrlSetResizing($hProgress, $GUI_DOCKBOTTOM + $GUI_DOCKLEFT + $GUI_DOCKRIGHT + $GUI_DOCKHEIGHT)
@@ -103,7 +99,12 @@ _GUIImageList_AddIcon($hImage, @SystemDir & "\shell32.dll", 2)
 GUISetState(@SW_SHOW)
 #endregion ### END Koda GUI section ###
 
-populateUninstalls()
+if $oArgs.Exists("/rc") Then
+	; list software on specified computer
+	populateUninstalls($oArgs.Item("/rc"))
+Else
+	populateUninstalls()
+EndIf
 
 ;~ getSizes()
 
@@ -113,8 +114,6 @@ _GUICtrlListView_SetColumnWidth($ListView1, 1, $LVSCW_AUTOSIZE)
 _GUICtrlListView_SetColumnWidth($ListView1, 2, $LVSCW_AUTOSIZE)
 _GUICtrlListView_SetColumnWidth($ListView1, 3, $LVSCW_AUTOSIZE)
 _GUICtrlListView_RegisterSortCallBack($ListView1)
-
-;~ $hContext = _GUICtrlMenu_CreatePopup()
 
 GUIRegisterMsg($WM_NOTIFY, "WM_NOTIFY")
 ;~ GUIRegisterMsg($WM_COMMAND, "WM_COMMAND")
@@ -174,11 +173,20 @@ Func populateUninstalls($sComp = @ComputerName)
 	Global Const $S_REGLOC64 = "SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
 	Global Const $S_REGLOC = "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
 
+	; cheap, temporary check for 64bit Windows. locally the @OSArch macro can be used, but remotely i'm not sure yet
+	Local $osIs64 = False
+	RegRead("\\" & $sComp & "\HKLM\Software\Wow6432Node", "")
+	if NOT @error Then
+		$osIs64 = True
+	EndIf
+
+	; populate array with standard \Uninstall keys (at the same time getting total count)
 	$aSubkeys = _regEnumKeys($S_REGLOC, $sComp)
 	if @error Then Return
 
 	$totalNormalEntries = UBound($aSubkeys)
-	if StringInStr(@OSArch, "64") Then
+	if $osIs64 Then
+		; add secondary 64-bit software entries if needed
 		$aSubkeys2 = _regEnumKeys($S_REGLOC64, $sComp)
 		$totalExtEntries = UBound($aSubkeys2)
 		_ArrayConcatenate($aSubkeys, $aSubkeys2)
@@ -186,29 +194,39 @@ Func populateUninstalls($sComp = @ComputerName)
 
 	For $i=0 To UBound($aSubkeys)-1
 		$sEnum = $aSubkeys[$i]
+		; cheap check if 64-bit registry path needs to be switched to.
+		; basically, if the current index is past the total count of 32-bit apps
 		if $i < $totalNormalEntries Then
 			$sRegLoc = $S_REGLOC
 		Else
 			$sRegLoc = $S_REGLOC64
 		EndIf
 
+		; construct key string
 		$sKey = "\\" & $sComp & "\HKLM\" & $sRegLoc & "\" & $sEnum
 
 		$sName = RegRead($sKey, "DisplayName")
-		If @error Then
+		If @error Then ; no displayname? toss that shit
 			ContinueLoop
 		ElseIf RegRead($sKey, "ParentKeyName") Then
+			; if there's a ParentKeyName it's almost always some hotfix or crap inflating
+			; the app list, e.g. various MS Office components
 			ContinueLoop
 		ElseIf RegRead($sKey, "SystemComponent") Then
+			; SystemComponent generally denotes some dependency sort of thing that shouldn't be
+			; uninstalled by itself
 			ContinueLoop
 		EndIf
 
 		$sUninstall = RegRead($sKey, "UninstallString")
 		If @error Or $sUninstall = "" Then ContinueLoop
 
+		; if it's a Win Installer issue, make sure the "uninstall string" actually UNINSTALLS
 		$sUninstall = StringReplace($sUninstall, "msiexec.exe /i", "msiexec.exe /X")
+		; then, add the /passive switch for an unattended but not silent uninstallation
 		If StringInStr($sUninstall, "msiexec.exe") Then $sUninstall &= " /passive"
 
+		; read in various standard info
 		$sPub = RegRead($sKey, "Publisher")
 		$sVer = RegRead($sKey, "DisplayVersion")
 		$sLoc = RegRead($sKey, "InstallLocation")
@@ -218,15 +236,18 @@ Func populateUninstalls($sComp = @ComputerName)
 			$iSize = NumberPadZeroesFloat(Round(Number(RegRead($sKey, "EstimatedSize")) / 1024, 2))
 			$iSizeTotal += $iSize
 		Else
+			; this is where manual size calculation would go
+			; obviously the first path to use would be that in InstallLocation
+			; provided it isn't bullshit like "c:\windows"
 			$iSize = ""
 		EndIf
 
+		; update progress display
 		GUICtrlSetData($lStatus, $i+1 & " / " & UBound($aSubkeys) & ". " & Round((($i+1)/UBound($aSubkeys))*100) & "% done")
 		GUICtrlSetData($hProgress, Round((($i+1)/UBound($aSubkeys))*100))
 
-;~ 		if @error Then ConsoleWrite("regread error: " & @error & @CRLF)
+		; create the listview item & stick strings in subitems
 		$hItem = GUICtrlCreateListViewItem($sName, $ListView1)
-
 		$iCurrent = _GUICtrlListView_GetItemCount($ListView1) - 1
 		_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sPub, $iColPub)
 		_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sVer, $iColVersion)
@@ -235,6 +256,7 @@ Func populateUninstalls($sComp = @ComputerName)
 		_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sUninstall, $iColUninstall)
 		_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sLoc, $iColLocation)
 
+		; if there's something listed in DisplayIcon, separate the filepath from the resource index
 		If $sIcon <> "" Then
 			$aIcon = StringSplit($sIcon, ",")
 			If $aIcon[0] > 1 Then
@@ -242,17 +264,16 @@ Func populateUninstalls($sComp = @ComputerName)
 			Else
 				$hIcon = _GUIImageList_AddIcon($hImage, $aIcon[1], 0)
 			EndIf
-;~ 			_GUICtrlListView_SetItemText($ListView1, $iCurrent, $aIcon[1], $iColIconPath)
 			_GUICtrlListView_SetItemImage($ListView1, $iCurrent, $hIcon)
+		; if the app key is a GUID, it's going to be a Win Installer case, which means the icon is pointed to elsewhere
 		ElseIf _stringIsGUID($sEnum) Then
 			$sNewKey = "HKLM\Software\Classes\Installer\Products\" & _stringConvertUUID($sEnum, 2)
 
-;~ 			_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sNewKey, $iColGUID)
 			$sIcon = RegRead("\\" & $sComp & "\" & $sNewKey, "ProductIcon")
 			if NOT @error Then
+				; if the icon path exists, use it
 				$hIcon = _GUIImageList_AddIcon($hImage, $sIcon)
 				_GUICtrlListView_SetItemImage($ListView1, $iCurrent, $hIcon)
-;~ 				_GUICtrlListView_SetItemText($ListView1, $iCurrent, $sIcon, $iColIconPath)
 			EndIf
 		EndIf
 	Next
@@ -261,9 +282,12 @@ Func populateUninstalls($sComp = @ComputerName)
 	_GUICtrlListView_SetColumnWidth($ListView1, $iColName, $LVSCW_AUTOSIZE)
 	_GUICtrlListView_SetColumnWidth($ListView1, $iColPub, $LVSCW_AUTOSIZE)
 	_GUICtrlListView_SetColumnWidth($ListView1, $iColVersion, $LVSCW_AUTOSIZE)
-EndFunc   ;==>populateUninstalls{36A415C2-7181-421D-92C9-8255766E0FF3}
+EndFunc   ;==>populateUninstalls
 
 Func getSizes()
+	; simple, temporary directory size calculator (in tma2.au3)
+	; avoids using DirGetSize so as to not lock everything the fuck up if
+	;  the directory happens to contain a horrid mass of files.
 	For $i = 0 To _GUICtrlListView_GetItemCount($ListView1) - 1
 		Local $sName = _GUICtrlListView_GetItemText($ListView1, $i, $iColName)
 		Local $iSize = _GUICtrlListView_GetItemText($ListView1, $i, $iColSize)
@@ -284,8 +308,11 @@ Func WM_NOTIFY($hWnd, $iMsg, $iwParam, $ilParam)
 	$IDFrom = DllStructGetData($tNMHDR, "IDFrom")
 	$Code = DllStructGetData($tNMHDR, "Code")
 
-;~ 	Switch $hWndFrom
+	; placeholder for future manual GUI bullshit that i hate having to fuck with
+	; goddammit
 
+	; return value to let AutoIt go about its GUI business
+	Return $GUI_RUNDEFMSG
 EndFunc   ;==>WM_NOTIFY
 
 Func WM_COMMAND($hWnd, $iMsg, $iwParam, $ilParam)
@@ -294,10 +321,18 @@ Func WM_COMMAND($hWnd, $iMsg, $iwParam, $ilParam)
 	ConsoleWrite("iwParam: " & $iwParam & @CRLF)
 	ConsoleWrite("ilParam: " & $ilParam & @CRLF)
 
+	; will probably only be needed in case of manual context menu handling
+	; e.g. to handle a menu item click
+
 	Return $GUI_RUNDEFMSG
 EndFunc   ;==>WM_COMMAND
 
 Func WM_CONTEXTMENU($hWnd, $iMsg, $iwParam, $ilParam)
+	; stupid bullshit manual context menu generation & display
+	; i hate it i hate it
+	; plus whatever stupid crap i put in this function will probably be re-written
+	;  'cause you have to intercept right-clicks on header controls yourself,
+	;  otherwise it'll act as a part of the ListView as a whole
 	Local $hMenu
 
 	$hMenu = _GUICtrlMenu_CreatePopup()
