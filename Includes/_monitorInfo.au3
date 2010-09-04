@@ -39,7 +39,9 @@ Func _monitorInfoSemiSync($compName = ".")
 EndFunc
 
 Func _monitorInfoFromEDID($EDID)
-	; PnP
+	Global Const $EDID_HEADER = Binary("0x00FFFFFFFFFFFF00")
+
+
 
 
 EndFunc
