@@ -60,8 +60,6 @@ Global Const $aMonAvail[18] = ["null", "Other", "Unknown", "Running or Full Powe
 
 ;~ #include "modernmenuraw.au3"
 
-$oError = ObjEvent("AutoIt.Error", "TMA2_Error")
-
 Opt("TrayAutoPause", 0)
 Opt("GUICloseOnESC", 1)
 OnAutoItExitRegister("onAutoItExit")
@@ -315,6 +313,7 @@ $inQBTeam = GUICtrlCreateInput("", 120, 108, 200, 20)
 	$chkQBHinder
 #ce
 
+
 $treeQB = GUICtrlCreateTreeView(12, 130, 160, 215, BitOR($TVS_HASBUTTONS, $TVS_LINESATROOT, $TVS_DISABLEDRAGDROP, $TVS_SHOWSELALWAYS, $TVS_CHECKBOXES, $WS_GROUP, $WS_TABSTOP, $WS_BORDER))
 $treeQB_0 = GUICtrlCreateTreeViewItem("Computer", $treeQB)
 $chkQBMac = GUICtrlCreateTreeViewItem("MAC Address", $treeQB_0)
@@ -407,6 +406,7 @@ _GUICtrlStatusBar_EmbedControl($statusBar, 2, $hMenu, 4)
 
 #endregion ### END Koda GUI section ###
 
+$oError = ObjEvent("AutoIt.Error", "TMA2_Error")
 GUISetState(@SW_SHOW)
 
 ;==============================================================================
