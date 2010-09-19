@@ -1,4 +1,4 @@
-﻿Global $debug = 1
+﻿Global $debug = 0
 Global $bGo = 0
 Global $pathHistory = @AppDataDir & "\autoboxoh.txt"
 
